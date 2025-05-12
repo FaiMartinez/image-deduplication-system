@@ -12,4 +12,4 @@ Perceptual hashing system for detecting similar/duplicate images
 ```bash
 git clone https://github.com/FaiMartinez/image-deduplication-system.git
 pip install -r requirements.txt
-```
+```# image-deduplication-system
