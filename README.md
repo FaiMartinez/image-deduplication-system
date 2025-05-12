@@ -8,8 +8,25 @@ Perceptual hashing system for detecting similar/duplicate images
 - Perceptual hashing (phash, ahash, dhash)
 - SQLite database storage
 
-## Setup
-```bash
-git clone https://github.com/FaiMartinez/image-deduplication-system.git
-pip install -r requirements.txt
+## Quick Start
+
+1. Clone repository:
+   ```bash
+   git clone https://github.com/your-username/repo-name.git
+   ```
+   
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Run the application:
+   ```bash
+   python run.py
+   ```
+
+4. Access in browser:
+   http://localhost:5000
 ```# image-deduplication-system
+
+
