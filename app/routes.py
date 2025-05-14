@@ -69,7 +69,7 @@ def register_routes(app):
                 }), 400
 
             # Temporary save
-            temp_dir = os.path.join(app.config['TEMP_FOLDER'])
+            temp_dir = str(app.config['TEMP_FOLDER'])
             os.makedirs(temp_dir, exist_ok=True)
             temp_path = os.path.join(temp_dir, secure_filename(file.filename))
             file.save(temp_path)
@@ -89,7 +89,7 @@ def register_routes(app):
             if duplicate:
                 try:
                     similarity = 100 if duplicate.file_hash == file_hash else calculate_similarity(perceptual_hashes, duplicate)
-                    relative_path = os.path.relpath(duplicate.path, app.config['UPLOAD_FOLDER'])
+                    relative_path = os.path.relpath(duplicate.path, str(app.config['UPLOAD_FOLDER']))
                     return jsonify({
                         'status': 'duplicate',
                         'existing': relative_path,
@@ -105,8 +105,8 @@ def register_routes(app):
             # Permanent save with hash-based directory structure
             file_ext = os.path.splitext(filename)[1]
             permanent_dir = os.path.join(
-                app.config['UPLOAD_FOLDER'], 
-                file_hash[:2], 
+                str(app.config['UPLOAD_FOLDER']),
+                file_hash[:2],
                 file_hash[2:4]
             )
             os.makedirs(permanent_dir, exist_ok=True)
@@ -127,7 +127,7 @@ def register_routes(app):
             session.add(new_image)
             session.commit()
 
-            relative_path = os.path.relpath(permanent_path, app.config['UPLOAD_FOLDER'])
+            relative_path = os.path.relpath(permanent_path, str(app.config['UPLOAD_FOLDER']))
             return jsonify({
                 'status': 'success',
                 'path': relative_path,

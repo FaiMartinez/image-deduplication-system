@@ -17,17 +17,16 @@ class Config:
     
     # 2. Now use it in other configurations
     SQLALCHEMY_DATABASE_URI = f'sqlite:///{BASE_DIR}/instance/image_database.db'
-    UPLOAD_FOLDER = BASE_DIR / 'uploads' / 'permanent'
+    UPLOAD_FOLDER = BASE_DIR / 'uploads'
     TEMP_FOLDER = BASE_DIR / 'uploads' / 'temp'
     
-
     # 3. Fix in create_dirs method
     @classmethod
     def create_dirs(cls):
         dirs_to_create = [
             cls.UPLOAD_FOLDER,
             cls.TEMP_FOLDER,
-            cls.BASE_DIR / 'instance'  # Changed from BASE_DIR to cls.BASE_DIR
+            cls.BASE_DIR / 'instance'
         ]
         
         for directory in dirs_to_create:
@@ -35,4 +34,3 @@ class Config:
 
 # 4. Initialize directories
 Config.create_dirs()
-
