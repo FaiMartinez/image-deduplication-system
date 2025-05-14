@@ -8,7 +8,7 @@ import os
 import time
 import traceback
 import magic
-from magic import Magic
+
 
 
 def register_routes(app):
@@ -57,7 +57,7 @@ def register_routes(app):
             file_start = file_stream.read(1024)
             file_stream.seek(0)
 
-            mime = Magic(mime=True)
+            mime = magic.Magic(mime=True)
             file_type = mime.from_buffer(file_start)
             allowed_types = app.config.get('ALLOWED_MIME_TYPES', set())
 
