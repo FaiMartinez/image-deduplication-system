@@ -1,4 +1,4 @@
-from flask import request, jsonify, render_template
+from flask import request, jsonify, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 from app.models import ImageHash
 from app.utils.hashing import generate_hashes, generate_file_hash, calculate_similarity
@@ -9,8 +9,6 @@ import time
 import traceback
 import magic
 
-
-
 def register_routes(app):
     engine = app.config['SQLALCHEMY_ENGINE']
     Session = sessionmaker(bind=engine)
@@ -19,10 +17,13 @@ def register_routes(app):
     def home():
         return render_template('index.html')
 
+    @app.route('/static/<path:filename>')
+    def serve_image(filename):
+        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
     @app.route('/upload', methods=['POST'])
     def upload_image():
         start_time = time.time()
-        
         
         if 'file' not in request.files:
             return jsonify({
@@ -89,16 +90,19 @@ def register_routes(app):
             if duplicate:
                 try:
                     similarity = 100 if duplicate.file_hash == file_hash else calculate_similarity(perceptual_hashes, duplicate)
+                    return jsonify({
+                        'status': 'duplicate',
+                        'existing': duplicate.path,
+                        'similarity': similarity
+                    }), 200
                 except Exception as e:
                     app.logger.error(f"Similarity calculation failed: {str(e)}")
-                    similarity = 0
-                return jsonify({
-                    'status': 'duplicate',
-                    'existing': duplicate.path,
-                    'similarity': similarity
-                }), 200
+                    return jsonify({
+                        'status': 'error',
+                        'error': 'Failed to calculate similarity'
+                    }), 500
 
-        # Permanent save with hash-based directory structure
+            # Permanent save with hash-based directory structure
             file_ext = os.path.splitext(filename)[1]
             permanent_dir = os.path.join(
                 app.config['UPLOAD_FOLDER'], 
