@@ -17,7 +17,7 @@ def register_routes(app):
     def home():
         return render_template('index.html')
 
-    @app.route('/static/<path:filename>')
+    @app.route('/uploads/<path:filename>')
     def serve_image(filename):
         return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
@@ -68,9 +68,8 @@ def register_routes(app):
                     'error': f'Invalid file type: {file_type}'
                 }), 400
 
-            
             # Temporary save
-            temp_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'temp')
+            temp_dir = os.path.join(app.config['TEMP_FOLDER'])
             os.makedirs(temp_dir, exist_ok=True)
             temp_path = os.path.join(temp_dir, secure_filename(file.filename))
             file.save(temp_path)
@@ -90,9 +89,10 @@ def register_routes(app):
             if duplicate:
                 try:
                     similarity = 100 if duplicate.file_hash == file_hash else calculate_similarity(perceptual_hashes, duplicate)
+                    relative_path = os.path.relpath(duplicate.path, app.config['UPLOAD_FOLDER'])
                     return jsonify({
                         'status': 'duplicate',
-                        'existing': duplicate.path,
+                        'existing': relative_path,
                         'similarity': similarity
                     }), 200
                 except Exception as e:
@@ -106,7 +106,6 @@ def register_routes(app):
             file_ext = os.path.splitext(filename)[1]
             permanent_dir = os.path.join(
                 app.config['UPLOAD_FOLDER'], 
-                'permanent',
                 file_hash[:2], 
                 file_hash[2:4]
             )
@@ -128,9 +127,10 @@ def register_routes(app):
             session.add(new_image)
             session.commit()
 
+            relative_path = os.path.relpath(permanent_path, app.config['UPLOAD_FOLDER'])
             return jsonify({
                 'status': 'success',
-                'path': permanent_path,
+                'path': relative_path,
                 'processing_time': time.time() - start_time
             }), 201
         
