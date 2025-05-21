@@ -1,9 +1,22 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Image Deduplication</title>
+    <title>Image Similarity Detection System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
     <style>
+        .hero-section {
+            background: linear-gradient(135deg, #6c757d 0%, #343a40 100%);
+            color: white;
+            padding: 3rem 0;
+            margin-bottom: 2rem;
+            border-radius: 10px;
+        }
+        .feature-icon {
+            font-size: 2rem;
+            color: #0d6efd;
+            margin-bottom: 1rem;
+        }
         .image-comparison {
             display: flex;
             gap: 20px;
@@ -11,20 +24,76 @@
         }
         .image-container {
             flex: 1;
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .image-container img {
             max-width: 100%;
             height: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        .alert {
+            margin-top: 10px;
+        }
+        .upload-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .feature-card {
+            height: 100%;
+            transition: transform 0.2s;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
         }
     </style>
 </head>
 <body class="container mt-5">
-    <div class="card">
-        <div class="card-body">
-            <h1 class="card-title">Upload Image</h1>
+    <div class="hero-section text-center">
+        <h1 class="display-4 mb-3">Image Similarity Detection System</h1>
+        <p class="lead">Find and manage duplicate images efficiently using perceptual hashing technology</p>
+    </div>
+
+    <div class="row mb-5">
+        <div class="col-md-4">
+            <div class="card feature-card">
+                <div class="card-body text-center">
+                    <i class="bi bi-fingerprint feature-icon"></i>
+                    <h3 class="h5">Perceptual Hashing</h3>
+                    <p>Advanced algorithm to detect visually similar images, even with minor modifications</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card feature-card">
+                <div class="card-body text-center">
+                    <i class="bi bi-lightning-charge feature-icon"></i>
+                    <h3 class="h5">Fast Processing</h3>
+                    <p>Quick comparison and efficient storage of image fingerprints</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card feature-card">
+                <div class="card-body text-center">
+                    <i class="bi bi-shield-check feature-icon"></i>
+                    <h3 class="h5">Accurate Results</h3>
+                    <p>Reliable detection of duplicates with adjustable similarity thresholds</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="upload-section">
+        <h2 class="h3 mb-4">Upload Your Image</h2>
             <form id="uploadForm" enctype="multipart/form-data">
                 <div class="mb-3">
-                    <input class="form-control" type="file" name="file" id="formFile" accept="image/*">
+                    <input class="form-control" type="file" name="file" id="formFile" accept="image/*" required>
                 </div>
                 <button type="submit" class="btn btn-primary">Upload</button>
             </form>
@@ -34,9 +103,36 @@
                     <h4>Uploaded Image</h4>
                     <img id="uploadedImage" src="" alt="Uploaded Image">
                 </div>
-                <div class="image-container">
-                    <h4>Existing Image</h4>
-                    <img id="existingImage" src="" alt="Existing Image">
+                <div class="image-container" id="existingImages">
+                    <h4>Similar Images</h4>
+                    <!-- Similar images will be appended here -->
+                </div>            </div>
+        </div>
+    </div>
+
+    <div class="mt-5 text-center text-muted">
+        <hr>
+        <p class="mb-3">How it works</p>
+        <div class="row">
+            <div class="col-md-4">
+                <div class="mb-4">
+                    <i class="bi bi-upload h2"></i>
+                    <h4 class="h6">1. Upload Image</h4>
+                    <small>Select and upload any image file</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="mb-4">
+                    <i class="bi bi-search h2"></i>
+                    <h4 class="h6">2. Processing</h4>
+                    <small>System analyzes and compares with database</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="mb-4">
+                    <i class="bi bi-collection h2"></i>
+                    <h4 class="h6">3. Results</h4>
+                    <small>View matching images if found</small>
                 </div>
             </div>
         </div>
@@ -48,49 +144,99 @@ document.getElementById('uploadForm').onsubmit = async (e) => {
     const formData = new FormData();
     const fileInput = document.getElementById('formFile');
     formData.append('file', fileInput.files[0]);
+    const resultDiv = document.getElementById('result');
+    const imageComparison = document.getElementById('imageComparison');
+    const uploadedImage = document.getElementById('uploadedImage');
+    const existingImages = document.getElementById('existingImages');
+
+    resultDiv.innerHTML = '<div class="alert alert-info">Uploading...</div>';
 
     try {
         const response = await fetch('/upload', {
             method: 'POST',
             body: formData
         });
-        
         const result = await response.json().catch(() => ({
             status: 'error',
             error: 'Invalid server response'
         }));
 
-        const imageComparison = document.getElementById('imageComparison');
-        
-        if (result.status === 'duplicate') {
-            document.getElementById('result').innerHTML = `
-                <div class="alert alert-warning">
-                    DUPLICATE DETECTED: ${result.similarity}% similar to existing image
-                </div>
-            `;
-            
-            // Display image comparison
-            imageComparison.style.display = 'flex';
-            document.getElementById('uploadedImage').src = URL.createObjectURL(fileInput.files[0]);
-            document.getElementById('existingImage').src = '/uploads/' + result.existing;
-        } else {
-            imageComparison.style.display = 'none';
-            document.getElementById('result').innerHTML = `
-                <div class="alert alert-${response.ok ? 'success' : 'danger'}">
-                    ${result.status ? result.status.toUpperCase() : 'ERROR'}: 
-                    ${result.error || result.path || 'Unknown error'}
-                    ${result.processing_time ? `<br>Processed in ${result.processing_time.toFixed(2)}s` : ''}
-                </div>
-            `;
-        }
+        console.log('Server response:', result); // Debug response
 
+        // Clear existing images
+        existingImages.innerHTML = '<h4>Similar Images</h4>';
+
+        if (result.status === 'success') {            resultDiv.innerHTML = `
+                <div class="alert alert-success">
+                    SUCCESS: Image uploaded to ${result.path}
+                    ${result.processing_time ? `<br>Processed in ${result.processing_time.toFixed(2)}s` : ''}
+                </div>`;
+            
+            const imagePath = result.path.startsWith('uploads/') ? result.path.replace('uploads/', '') : result.path;
+            uploadedImage.src = `/uploads/${imagePath}`;
+            imageComparison.style.display = 'flex';
+            console.log('Setting uploaded image src:', uploadedImage.src); // Debug
+            uploadedImage.onerror = () => {
+                console.error(`Failed to load uploaded image: ${uploadedImage.src}`);
+                setTimeout(() => {
+                    const retryImg = new Image();
+                    retryImg.src = uploadedImage.src;
+                    retryImg.onerror = () => {
+                        resultDiv.innerHTML += '<div class="alert alert-danger">Error: Failed to load uploaded image: ' + uploadedImage.src + '</div>';
+                    };
+                }, 500);
+            };
+        } else if (result.status === 'duplicate') {
+            const matches = result.matches || [];            resultDiv.innerHTML = `
+                <div class="alert alert-warning">
+                    <h5 class="alert-heading">DUPLICATE DETECTED: ${matches.length} similar image(s) found</h5>
+                    ${matches.map(match => `
+                        <div class="mt-2">
+                            <strong>${match.path}</strong><br>
+                            <small>Perceptual Similarity: ${match.similarity.toFixed(2)}%</small><br>
+                            <small>Exact Match: ${match.file_hash_match ? 
+                                '<span class="text-success">✓  `</span>' : 
+                                '<span class="text-warning">✗ Different file (modified brightness/contrast/etc)</span>'
+                            }</small>
+                        </div>
+                    `).join('<hr class="my-2">')}
+                </div>
+            `;
+            imageComparison.style.display = 'flex';
+            uploadedImage.src = URL.createObjectURL(fileInput.files[0]); // Show local file
+            console.log('Setting uploaded image src (local):', uploadedImage.src); // Debug
+            matches.forEach(match => {
+                if (match.path && match.similarity != null) {
+                    // Remove 'uploads/' prefix if present
+                    const matchPath = match.path.startsWith('uploads/') ? match.path.replace('uploads/', '') : match.path;                    const img = document.createElement('img');
+                    img.src = `/uploads/${matchPath}`;
+                    img.alt = `Similar image (${match.similarity.toFixed(2)}%)`;
+                    img.style.maxWidth = '100%';
+                    img.style.height = 'auto';
+                    console.log('Setting similar image src:', img.src); // Debug
+                    img.onerror = () => {
+                        console.error(`Failed to load similar image: ${img.src}`);
+                        resultDiv.innerHTML += '<div class="alert alert-danger">Error: Failed to load similar image</div>';
+                    };
+                    existingImages.appendChild(img);
+                }
+            });
+        } else {
+            resultDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    ERROR: ${result.error || 'Unknown error'}
+                </div>
+            `;
+            imageComparison.style.display = 'none';
+        }
     } catch (error) {
-        document.getElementById('result').innerHTML = `
+        console.error('Upload error:', error);
+        resultDiv.innerHTML = `
             <div class="alert alert-danger">
                 NETWORK ERROR: ${error.message}
             </div>
         `;
-        document.getElementById('imageComparison').style.display = 'none';
+        imageComparison.style.display = 'none';
     }
 };
     </script>

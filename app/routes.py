@@ -1,7 +1,7 @@
 from flask import request, jsonify, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 from app.models import ImageHash
-from app.utils.hashing import generate_hashes, generate_file_hash, calculate_similarity
+from app.utils.hashing import generate_hashes, calculate_similarity, generate_file_hash
 from sqlalchemy.orm import sessionmaker
 from werkzeug.exceptions import RequestEntityTooLarge
 import os
@@ -42,18 +42,12 @@ def register_routes(app):
             if max_size and request.content_length and request.content_length > max_size:
                 raise RequestEntityTooLarge(f"File exceeds {max_size//(1024*1024)}MB limit")
                 
-            if 'file' not in request.files:
-                return jsonify({'status': 'error', 'error': 'No file uploaded'}), 400
-                
-            file = request.files['file']
-            if file.filename == '':
-                return jsonify({'status': 'error', 'error': 'Empty filename'}), 400
-
             # Validate file extension
             filename = secure_filename(file.filename)
             allowed_extensions = app.config.get('ALLOWED_EXTENSIONS', {'png', 'jpg', 'jpeg', 'webp'})
             if '.' not in filename or filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
                 return jsonify({'status': 'error', 'error': 'Invalid file extension'}), 400
+
             file_stream = file.stream
             file_start = file_stream.read(1024)
             file_stream.seek(0)
@@ -74,43 +68,71 @@ def register_routes(app):
             temp_path = os.path.join(temp_dir, secure_filename(file.filename))
             file.save(temp_path)
 
-            # Generate hashes
-            file_hash = generate_file_hash(temp_path)
+            # Generate perceptual hashes
             perceptual_hashes = generate_hashes(temp_path)
+            # Generate file hash
+            file_hash = generate_file_hash(temp_path)
+            app.logger.debug(f"Generated hashes for uploaded image: {perceptual_hashes}")
+            app.logger.debug(f"Generated file hash: {file_hash}")
             
             session = Session()
             
-            # Check for duplicates
-            duplicate = session.query(ImageHash).filter(
-                (ImageHash.file_hash == file_hash) |
-                (ImageHash.phash == perceptual_hashes['phash'])
-            ).first()
+            # Check for similar images based on perceptual hashes
+            duplicates = session.query(ImageHash).filter(
+                ImageHash.phash != None  # Ensure phash exists for comparison
+            ).all()
 
-            if duplicate:
+            if duplicates:
                 try:
-                    similarity = 100 if duplicate.file_hash == file_hash else calculate_similarity(perceptual_hashes, duplicate)
-                    relative_path = os.path.relpath(duplicate.path, str(app.config['UPLOAD_FOLDER']))
-                    return jsonify({
-                        'status': 'duplicate',
-                        'existing': relative_path,
-                        'similarity': similarity
-                    }), 200
+                    # Calculate similarity for all duplicates
+                    results = []
+                    for duplicate in duplicates:
+                        app.logger.debug(f"Comparing with duplicate: path={duplicate.path}, hashes={duplicate.__dict__}")
+                        similarity = calculate_similarity(perceptual_hashes, duplicate)
+                        app.logger.debug(f"Similarity score: {similarity}")
+                        if similarity is None or not isinstance(similarity, (int, float)):
+                            app.logger.error(f"Invalid similarity score for {duplicate.path}: {similarity}")
+                            continue
+                        
+                        # Calculate file hash for the duplicate
+                        duplicate_file_hash = generate_file_hash(duplicate.path)
+                        file_hash_match = file_hash == duplicate_file_hash
+                        
+                        # Only include matches above a similarity threshold (e.g., 70%)
+                        if similarity >= app.config.get('SIMILARITY_THRESHOLD', 70):
+                            relative_path = os.path.relpath(duplicate.path, str(app.config['UPLOAD_FOLDER'])).replace('\\', '/')
+                            results.append({
+                                'path': relative_path,
+                                'similarity': float(similarity),  # Ensure numeric value
+                                'file_hash_match': file_hash_match,
+                                'file_hash': duplicate_file_hash
+                            })
+
+                    if results:
+                        # Sort results by similarity (descending)
+                        results.sort(key=lambda x: x['similarity'], reverse=True)
+                        os.remove(temp_path)  # Remove temp file since we found similar images
+                        return jsonify({
+                            'status': 'duplicate',
+                            'matches': results,
+                            'message': f'Found {len(results)} similar image(s)'
+                        }), 200
+
                 except Exception as e:
-                    app.logger.error(f"Similarity calculation failed: {str(e)}")
+                    app.logger.error(f"Similarity calculation failed: {str(e)}\n{traceback.format_exc()}")
                     return jsonify({
                         'status': 'error',
                         'error': 'Failed to calculate similarity'
                     }), 500
 
-            # Permanent save with hash-based directory structure
+            # If no similar images found, proceed with permanent save
             file_ext = os.path.splitext(filename)[1]
-            permanent_dir = os.path.join(
-                str(app.config['UPLOAD_FOLDER']),
-                file_hash[:2],
-                file_hash[2:4]
-            )
+            # Use a simple directory structure
+            permanent_dir = str(app.config['UPLOAD_FOLDER'])
             os.makedirs(permanent_dir, exist_ok=True)
-            permanent_path = os.path.join(permanent_dir, f"{file_hash}{file_ext}")
+            # Use a timestamp-based filename to avoid collisions
+            timestamp = str(int(time.time() * 1000))
+            permanent_path = os.path.join(permanent_dir, f"{timestamp}{file_ext}")
 
             # Atomic file move
             if os.path.exists(permanent_path):
@@ -118,10 +140,9 @@ def register_routes(app):
             else:
                 os.rename(temp_path, permanent_path)
 
-            # Store in database
+            # Store in database without file_hash
             new_image = ImageHash(
                 path=permanent_path,
-                file_hash=file_hash,
                 **perceptual_hashes
             )
             session.add(new_image)
@@ -151,3 +172,4 @@ def register_routes(app):
                 os.remove(temp_path)
             if 'session' in locals():
                 session.close()
+
