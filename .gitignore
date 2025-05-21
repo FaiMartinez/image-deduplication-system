@@ -11,6 +11,9 @@ instance/
 # Uploads
 uploads/
 
+# Logs
+test_images/
+
 # Database
 *.db
 *.sqlite
@@ -18,3 +21,4 @@ uploads/
 # IDE
 .vscode/
 .idea/
+generate_test_images.py

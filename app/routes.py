@@ -1,7 +1,7 @@
 from flask import request, jsonify, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 from app.models import ImageHash
-from app.utils.hashing import generate_hashes, calculate_similarity
+from app.utils.hashing import generate_hashes, calculate_similarity, generate_file_hash
 from sqlalchemy.orm import sessionmaker
 from werkzeug.exceptions import RequestEntityTooLarge
 import os
@@ -70,7 +70,10 @@ def register_routes(app):
 
             # Generate perceptual hashes
             perceptual_hashes = generate_hashes(temp_path)
+            # Generate file hash
+            file_hash = generate_file_hash(temp_path)
             app.logger.debug(f"Generated hashes for uploaded image: {perceptual_hashes}")
+            app.logger.debug(f"Generated file hash: {file_hash}")
             
             session = Session()
             
@@ -90,12 +93,19 @@ def register_routes(app):
                         if similarity is None or not isinstance(similarity, (int, float)):
                             app.logger.error(f"Invalid similarity score for {duplicate.path}: {similarity}")
                             continue
+                        
+                        # Calculate file hash for the duplicate
+                        duplicate_file_hash = generate_file_hash(duplicate.path)
+                        file_hash_match = file_hash == duplicate_file_hash
+                        
                         # Only include matches above a similarity threshold (e.g., 70%)
                         if similarity >= app.config.get('SIMILARITY_THRESHOLD', 70):
                             relative_path = os.path.relpath(duplicate.path, str(app.config['UPLOAD_FOLDER'])).replace('\\', '/')
                             results.append({
                                 'path': relative_path,
-                                'similarity': float(similarity)  # Ensure numeric value
+                                'similarity': float(similarity),  # Ensure numeric value
+                                'file_hash_match': file_hash_match,
+                                'file_hash': duplicate_file_hash
                             })
 
                     if results:
