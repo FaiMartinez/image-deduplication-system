@@ -7,6 +7,11 @@ def load_ground_truth(ground_truth_path: str) -> Dict[str, List[str]]:
     with open(ground_truth_path, 'r') as f:
         return json.load(f)
 
+def normalize_path(path: str) -> str:
+    """Normalize path to match ground truth format."""
+    # Convert Windows paths to forward slashes
+    return str(Path(path)).replace('\\', '/')
+
 def calculate_metrics(predictions: Dict[str, List[str]], ground_truth: Dict[str, List[str]]) -> Dict[str, float]:
     """
     Calculate precision, recall, and F1 score.
@@ -20,11 +25,12 @@ def calculate_metrics(predictions: Dict[str, List[str]], ground_truth: Dict[str,
     false_negatives = 0
     
     for image, predicted_matches in predictions.items():
-        if image not in ground_truth:
+        normalized_image = normalize_path(image)
+        if normalized_image not in ground_truth:
             continue
             
-        true_matches = set(ground_truth[image])
-        predicted_set = set(predicted_matches)
+        true_matches = set(ground_truth[normalized_image])
+        predicted_set = set(normalize_path(p) for p in predicted_matches)
         
         # Calculate metrics components
         true_positives += len(true_matches.intersection(predicted_set))
@@ -39,5 +45,10 @@ def calculate_metrics(predictions: Dict[str, List[str]], ground_truth: Dict[str,
     return {
         'precision': precision,
         'recall': recall,
-        'f1_score': f1_score
+        'f1_score': f1_score,
+        'details': {
+            'true_positives': true_positives,
+            'false_positives': false_positives,
+            'false_negatives': false_negatives
+        }
     }
