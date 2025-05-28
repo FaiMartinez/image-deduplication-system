@@ -20,6 +20,16 @@ class Config:
     UPLOAD_FOLDER = BASE_DIR / 'uploads'
     TEMP_FOLDER = BASE_DIR / 'uploads' / 'temp'
     
+    # Performance optimization settings
+    SIMILARITY_THRESHOLD = 85  # Minimum similarity percentage to consider as duplicate
+    MAX_HAMMING_DISTANCE = 16  # Maximum hamming distance for pre-filtering
+    MAX_POTENTIAL_MATCHES = 100  # Maximum number of potential matches to analyze
+    
+    # Database optimization
+    SQLALCHEMY_POOL_SIZE = 10
+    SQLALCHEMY_MAX_OVERFLOW = 20
+    SQLALCHEMY_POOL_TIMEOUT = 30
+    
     # 3. Fix in create_dirs method
     @classmethod
     def create_dirs(cls):

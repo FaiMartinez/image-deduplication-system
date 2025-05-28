@@ -14,11 +14,13 @@ def create_app():
     
     app.config.from_object('app.config.Config')
     
-    # Initialize database
-    from .models import Base
+    # Initialize database and tables
+    from .models import Base, ImageHash, Feedback
     from sqlalchemy import create_engine
     engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
     app.config['SQLALCHEMY_ENGINE'] = engine
+    
+    # Create all tables
     Base.metadata.create_all(engine)
     
     # Register routes

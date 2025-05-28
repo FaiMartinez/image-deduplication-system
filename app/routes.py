@@ -1,13 +1,15 @@
 from flask import request, jsonify, render_template, send_from_directory
 from werkzeug.utils import secure_filename
-from app.models import ImageHash
+from app.models import ImageHash, Feedback
 from app.utils.hashing import generate_hashes, calculate_similarity, generate_file_hash
 from sqlalchemy.orm import sessionmaker
 from werkzeug.exceptions import RequestEntityTooLarge
+from sqlalchemy import func, or_
 import os
 import time
 import traceback
 import magic
+import imagehash
 
 def register_routes(app):
     engine = app.config['SQLALCHEMY_ENGINE']
@@ -70,60 +72,69 @@ def register_routes(app):
 
             # Generate perceptual hashes
             perceptual_hashes = generate_hashes(temp_path)
-            # Generate file hash
-            file_hash = generate_file_hash(temp_path)
             app.logger.debug(f"Generated hashes for uploaded image: {perceptual_hashes}")
-            app.logger.debug(f"Generated file hash: {file_hash}")
             
             session = Session()
             
-            # Check for similar images based on perceptual hashes
-            duplicates = session.query(ImageHash).filter(
-                ImageHash.phash != None  # Ensure phash exists for comparison
-            ).all()
+            try:
+                # First check for exact matches
+                exact_matches = session.query(ImageHash).filter(
+                    or_(
+                        ImageHash.phash == perceptual_hashes['phash'],
+                        ImageHash.ahash == perceptual_hashes['ahash'],
+                        ImageHash.dhash == perceptual_hashes['dhash']
+                    )
+                ).all()
 
-            if duplicates:
-                try:
-                    # Calculate similarity for all duplicates
-                    results = []
-                    for duplicate in duplicates:
-                        app.logger.debug(f"Comparing with duplicate: path={duplicate.path}, hashes={duplicate.__dict__}")
-                        similarity = calculate_similarity(perceptual_hashes, duplicate)
-                        app.logger.debug(f"Similarity score: {similarity}")
-                        if similarity is None or not isinstance(similarity, (int, float)):
-                            app.logger.error(f"Invalid similarity score for {duplicate.path}: {similarity}")
-                            continue
+                # If no exact matches, get potential matches for similarity check
+                potential_matches = session.query(ImageHash).limit(1000).all() if not exact_matches else []
+                
+                results = []
+                # Process exact matches first
+                for match in exact_matches:
+                    relative_path = os.path.relpath(match.path, str(app.config['UPLOAD_FOLDER'])).replace('\\', '/')
+                    results.append({
+                        'path': relative_path,
+                        'similarity': 100.0  # Exact match
+                    })
+
+                # Then process potential matches
+                similarity_threshold = app.config.get('SIMILARITY_THRESHOLD', 70)
+                for match in potential_matches:
+                    try:
+                        similarity = calculate_similarity(perceptual_hashes, match)
                         
-                        # Calculate file hash for the duplicate
-                        duplicate_file_hash = generate_file_hash(duplicate.path)
-                        file_hash_match = file_hash == duplicate_file_hash
-                        
-                        # Only include matches above a similarity threshold (e.g., 70%)
-                        if similarity >= app.config.get('SIMILARITY_THRESHOLD', 70):
-                            relative_path = os.path.relpath(duplicate.path, str(app.config['UPLOAD_FOLDER'])).replace('\\', '/')
+                        if similarity >= similarity_threshold:
+                            relative_path = os.path.relpath(match.path, str(app.config['UPLOAD_FOLDER'])).replace('\\', '/')
                             results.append({
                                 'path': relative_path,
-                                'similarity': float(similarity),  # Ensure numeric value
-                                'file_hash_match': file_hash_match,
-                                'file_hash': duplicate_file_hash
+                                'similarity': float(similarity)
                             })
+                            
+                            # Early exit if we found enough matches
+                            if len(results) >= 100:  # Limit max results
+                                break
+                                
+                    except Exception as e:
+                        app.logger.error(f"Error comparing with {match.path}: {str(e)}")
+                        continue
 
-                    if results:
-                        # Sort results by similarity (descending)
-                        results.sort(key=lambda x: x['similarity'], reverse=True)
-                        os.remove(temp_path)  # Remove temp file since we found similar images
-                        return jsonify({
-                            'status': 'duplicate',
-                            'matches': results,
-                            'message': f'Found {len(results)} similar image(s)'
-                        }), 200
-
-                except Exception as e:
-                    app.logger.error(f"Similarity calculation failed: {str(e)}\n{traceback.format_exc()}")
+                if results:
+                    # Sort results by similarity (descending)
+                    results.sort(key=lambda x: x['similarity'], reverse=True)
+                    os.remove(temp_path)
                     return jsonify({
-                        'status': 'error',
-                        'error': 'Failed to calculate similarity'
-                    }), 500
+                        'status': 'duplicate',
+                        'matches': results[:10],  # Return top 10 matches
+                        'message': f'Found {len(results)} similar image(s)'
+                    }), 200
+
+            except Exception as e:
+                app.logger.error(f"Similarity calculation failed: {str(e)}\n{traceback.format_exc()}")
+                return jsonify({
+                    'status': 'error',
+                    'error': 'Failed to calculate similarity'
+                }), 500
 
             # If no similar images found, proceed with permanent save
             file_ext = os.path.splitext(filename)[1]
@@ -170,6 +181,37 @@ def register_routes(app):
         finally:
             if 'temp_path' in locals() and os.path.exists(temp_path):
                 os.remove(temp_path)
+            if 'session' in locals():
+                session.close()
+
+    @app.route('/feedback', methods=['POST'])
+    def submit_feedback():
+        try:
+            data = request.json
+            session = Session()
+            
+            feedback = Feedback(
+                accuracy_rating=data.get('accuracyRating'),
+                speed_rating=data.get('speedRating'),
+                found_duplicates=data.get('foundDuplicates'),
+                comments=data.get('comments')
+            )
+            
+            session.add(feedback)
+            session.commit()
+            
+            return jsonify({
+                'status': 'success',
+                'message': 'Thank you for your feedback!'
+            }), 200
+            
+        except Exception as e:
+            app.logger.error(f"Error saving feedback: {str(e)}")
+            return jsonify({
+                'status': 'error',
+                'message': 'Unable to save feedback'
+            }), 500
+        finally:
             if 'session' in locals():
                 session.close()
 
